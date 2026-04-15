@@ -46,42 +46,63 @@
   const carousel       = document.getElementById('carousel');
   const cards          = Array.from(document.querySelectorAll('.card'));
   const floatingCard   = document.getElementById('floatingCard');
-  const floatingImg    = document.getElementById('floatingImg');
-  const floatingClose  = document.getElementById('floatingClose');
-  const floatingIndex  = floatingCard.querySelector('.floating-index');
+  const floatingImg    = floatingCard?.querySelector('img[id="floatingImg"]') || document.getElementById('floatingImg');
+  const floatingClose  = floatingCard?.querySelector('.floating-close') || document.getElementById('floatingClose');
+  const floatingIndex  = floatingCard?.querySelector('.floating-index');
   const cursor         = document.getElementById('cursor');
   const cursorFollower = document.getElementById('cursorFollower');
   const bgCanvas       = document.getElementById('bg-canvas');
-  const ctx            = bgCanvas.getContext('2d');
+  const ctx            = bgCanvas?.getContext('2d');
+
+  // Validate critical elements
+  if (!carousel || !cards.length || !floatingCard || !bgCanvas || !ctx) {
+    console.warn('Gallery: Missing critical DOM elements');
+    return;
+  }
 
   /* ── RADIUS (responsive) ────────────────────────────────── */
+  let cachedRadius = null;
+  let cachedInnerWidth = null;
+
   function getRadius() {
     const w = window.innerWidth;
-    if (w <= 600) return 310;
-    if (w <= 900) return 420;
-    return Math.min(680, w * 0.50);
+    // Cache to avoid recalculation
+    if (cachedRadius !== null && cachedInnerWidth === w) {
+      return cachedRadius;
+    }
+    cachedInnerWidth = w;
+
+    if (w <= 600) cachedRadius = 310;
+    else if (w <= 900) cachedRadius = 420;
+    else cachedRadius = Math.min(680, w * 0.50);
+
+    return cachedRadius;
   }
 
   /* ── POSITION CARDS IN 3D CIRCLE ───────────────────────── */
   function positionCards(rotY) {
     const r = getRadius();
     cards.forEach((card, i) => {
-      const angle = (i / TOTAL) * 360 + rotY;
-      const rad   = (angle * Math.PI) / 180;
-      const tx    = Math.sin(rad) * r;
-      const tz    = Math.cos(rad) * r;
-      const rotCard = -angle;
+      try {
+        const angle = (i / TOTAL) * 360 + rotY;
+        const rad   = (angle * Math.PI) / 180;
+        const tx    = Math.sin(rad) * r;
+        const tz    = Math.cos(rad) * r;
+        const rotCard = -angle;
 
-      card.style.transform = `
-        translateX(${tx}px)
-        translateZ(${tz}px)
-        rotateY(${rotCard}deg)
-      `;
+        card.style.transform = `
+          translateX(${tx}px)
+          translateZ(${tz}px)
+          rotateY(${rotCard}deg)
+        `;
 
-      // Depth-based opacity
-      const normalized = (tz + r) / (2 * r); // 0…1
-      const opacity = 0.55 + normalized * 0.45;
-      card.style.opacity = card.classList.contains('grabbed') ? '0.3' : opacity;
+        // Depth-based opacity
+        const normalized = (tz + r) / (2 * r); // 0…1
+        const opacity = 0.55 + normalized * 0.45;
+        card.style.opacity = card.classList.contains('grabbed') ? '0.3' : opacity;
+      } catch (err) {
+        console.warn('Gallery: Error positioning card', i, err);
+      }
     });
   }
 
@@ -96,20 +117,22 @@
           state.isThrown = false;
         }
         state.angle += state.vel;
-      } else {
+      } else if (!prefersReducedMotion) {
         state.angle += BASE_SPEED;
       }
     }
 
     positionCards(state.angle);
     springFloatingCard();
-    drawBg();
+    if (!prefersReducedMotion) drawBg();
     raf = requestAnimationFrame(loop);
   }
 
   /* ── BACKGROUND PARTICLE SYSTEM ────────────────────────── */
   const particles = [];
-  const PARTICLE_COUNT = 55;
+  // Reduce particles on low-end devices
+  const PARTICLE_COUNT = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 20 : 55;
+  const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   function initParticles() {
     bgCanvas.width  = window.innerWidth;
@@ -129,86 +152,101 @@
   }
 
   function drawBg() {
-    const W = bgCanvas.width;
-    const H = bgCanvas.height;
-    ctx.clearRect(0, 0, W, H);
+    try {
+      const W = bgCanvas.width;
+      const H = bgCanvas.height;
+      ctx.clearRect(0, 0, W, H);
 
-    // Subtle vignette
-    const vig = ctx.createRadialGradient(W/2, H/2, H*0.1, W/2, H/2, H*0.8);
-    vig.addColorStop(0, 'rgba(0,0,0,0)');
-    vig.addColorStop(1, 'rgba(0,0,0,0.55)');
-    ctx.fillStyle = vig;
-    ctx.fillRect(0, 0, W, H);
+      // Subtle vignette
+      const vig = ctx.createRadialGradient(W/2, H/2, H*0.1, W/2, H/2, H*0.8);
+      vig.addColorStop(0, 'rgba(0,0,0,0)');
+      vig.addColorStop(1, 'rgba(0,0,0,0.55)');
+      ctx.fillStyle = vig;
+      ctx.fillRect(0, 0, W, H);
 
-    // Particles
-    particles.forEach(p => {
-      p.x += p.vx;
-      p.y += p.vy;
-      if (p.x < 0) p.x = W;
-      if (p.x > W) p.x = 0;
-      if (p.y < 0) p.y = H;
-      if (p.y > H) p.y = 0;
+      // Particles
+      particles.forEach(p => {
+        p.x += p.vx;
+        p.y += p.vy;
+        if (p.x < 0) p.x = W;
+        if (p.x > W) p.x = 0;
+        if (p.y < 0) p.y = H;
+        if (p.y > H) p.y = 0;
 
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-      ctx.fillStyle = p.gold
-        ? `rgba(201,169,110,${p.a * 0.6})`
-        : `rgba(240,237,232,${p.a * 0.25})`;
-      ctx.fill();
-    });
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fillStyle = p.gold
+          ? `rgba(201,169,110,${p.a * 0.6})`
+          : `rgba(240,237,232,${p.a * 0.25})`;
+        ctx.fill();
+      });
 
-    // Mouse glow
-    const mg = ctx.createRadialGradient(
-      state.mouse.x, state.mouse.y, 0,
-      state.mouse.x, state.mouse.y, 180
-    );
-    mg.addColorStop(0, 'rgba(201,169,110,0.06)');
-    mg.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = mg;
-    ctx.fillRect(0, 0, W, H);
+      // Mouse glow
+      const mg = ctx.createRadialGradient(
+        state.mouse.x, state.mouse.y, 0,
+        state.mouse.x, state.mouse.y, 180
+      );
+      mg.addColorStop(0, 'rgba(201,169,110,0.06)');
+      mg.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = mg;
+      ctx.fillRect(0, 0, W, H);
+    } catch (err) {
+      console.warn('Gallery: Error drawing background', err);
+    }
   }
 
   /* ── CUSTOM CURSOR ──────────────────────────────────────── */
   let cfX = 0, cfY = 0; // cursor follower current pos
+  let lastCursorTime = 0;
+  const CURSOR_THROTTLE = 16; // ~60fps
 
   function updateCursor(x, y) {
+    const now = performance.now();
+    if (now - lastCursorTime < CURSOR_THROTTLE) return;
+    lastCursorTime = now;
+
     state.mouse.x = x;
     state.mouse.y = y;
-    cursor.style.left = x + 'px';
-    cursor.style.top  = y + 'px';
+    if (cursor) cursor.style.left = x + 'px';
+    if (cursor) cursor.style.top  = y + 'px';
     // Follower lags
     cfX += (x - cfX) * 0.14;
     cfY += (y - cfY) * 0.14;
-    cursorFollower.style.left = cfX + 'px';
-    cursorFollower.style.top  = cfY + 'px';
+    if (cursorFollower) {
+      cursorFollower.style.left = cfX + 'px';
+      cursorFollower.style.top  = cfY + 'px';
+    }
   }
 
-  document.addEventListener('mousemove', e => {
-    updateCursor(e.clientX, e.clientY);
-  });
+  const handleMouseMove = (e) => updateCursor(e.clientX, e.clientY);
+  document.addEventListener('mousemove', handleMouseMove, { passive: true });
 
   /* ── FLOATING CARD SPRING PHYSICS ───────────────────────── */
   function springFloatingCard() {
     if (!state.float.active) return;
 
-    const f = state.float;
-    const dx = f.tx - f.x;
-    const dy = f.ty - f.y;
+    try {
+      const f = state.float;
+      const dx = f.tx - f.x;
+      const dy = f.ty - f.y;
 
-    f.vx = f.vx * FLOAT_DAMP + dx * FLOAT_SPRING;
-    f.vy = f.vy * FLOAT_DAMP + dy * FLOAT_SPRING;
+      f.vx = f.vx * FLOAT_DAMP + dx * FLOAT_SPRING;
+      f.vy = f.vy * FLOAT_DAMP + dy * FLOAT_SPRING;
 
-    f.x += f.vx;
-    f.y += f.vy;
+      f.x += f.vx;
+      f.y += f.vy;
 
-    // Apply tilt based on velocity
-    const targetTilt = f.vx * 0.6;
-    f.tilt += (targetTilt - f.tilt) * 0.1;
+      // Apply tilt based on velocity
+      const targetTilt = f.vx * 0.6;
+      f.tilt += (targetTilt - f.tilt) * 0.1;
 
-    floatingCard.style.left = f.x + 'px';
-    floatingCard.style.top  = f.y + 'px';
-    floatingCard.style.setProperty('--tilt', f.tilt + 'deg');
-    floatingCard.style.transform = `translate(-50%, -50%) scale(1) rotate(${f.tilt}deg)`;
+      floatingCard.style.left = f.x + 'px';
+      floatingCard.style.top  = f.y + 'px';
+      floatingCard.style.setProperty('--tilt', f.tilt + 'deg');
+      floatingCard.style.transform = `translate(-50%, -50%) scale(1) rotate(${f.tilt}deg)`;
+    } catch (err) {
+      console.warn('Gallery: Error in spring physics', err);
+    }
   }
 
   /* ── SPAWN FLOATING CARD ────────────────────────────────── */
@@ -217,9 +255,14 @@
     const img   = card.querySelector('img');
     const num   = idx + 1;
 
+    if (!img) {
+      console.warn('Gallery: Card image not found', idx);
+      return;
+    }
+
     floatingImg.src = img.src;
     floatingImg.alt = img.alt;
-    floatingIndex.textContent = String(num).padStart(2, '0');
+    if (floatingIndex) floatingIndex.textContent = String(num).padStart(2, '0');
 
     state.float.x  = originX;
     state.float.y  = originY;
@@ -234,6 +277,7 @@
     floatingCard.style.left = originX + 'px';
     floatingCard.style.top  = originY + 'px';
     floatingCard.classList.add('visible');
+    floatingCard.removeAttribute('hidden');
     card.classList.add('grabbed');
     document.body.classList.add('dragging');
   }
@@ -243,6 +287,7 @@
 
     // Snap float back & shrink
     floatingCard.classList.remove('visible');
+    floatingCard.setAttribute('hidden', '');
     state.float.active = false;
 
     cards.forEach(c => c.classList.remove('grabbed'));
@@ -253,26 +298,33 @@
   let dragCard = null;
 
   cards.forEach(card => {
-    card.addEventListener('mouseenter', () => {
+    const handleMouseEnter = () => {
       if (!state.isDragging) card.classList.add('hovered');
-    });
-    card.addEventListener('mouseleave', () => {
+    };
+    const handleMouseLeave = () => {
       card.classList.remove('hovered');
-    });
+    };
+    const handleMouseDown = (e) => {
+      try {
+        e.preventDefault();
+        dragCard = card;
+        state.isDragging = true;
+        state.isThrown   = false;
+        state.lastX      = e.clientX;
+        state.lastDX     = 0;
+        state.frameVels  = [];
+        card.classList.remove('hovered');
 
-    card.addEventListener('mousedown', e => {
-      e.preventDefault();
-      dragCard = card;
-      state.isDragging = true;
-      state.isThrown   = false;
-      state.lastX      = e.clientX;
-      state.lastDX     = 0;
-      state.frameVels  = [];
-      card.classList.remove('hovered');
+        // Spawn the floating clone
+        spawnFloat(card, e.clientX, e.clientY);
+      } catch (err) {
+        console.warn('Gallery: Error on card mousedown', err);
+      }
+    };
 
-      // Spawn the floating clone
-      spawnFloat(card, e.clientX, e.clientY);
-    });
+    card.addEventListener('mouseenter', handleMouseEnter);
+    card.addEventListener('mouseleave', handleMouseLeave);
+    card.addEventListener('mousedown', handleMouseDown);
   });
 
   document.addEventListener('mousemove', e => {
@@ -367,28 +419,35 @@
   });
 
   /* ── SCROLL TO ROTATE ───────────────────────────────────── */
-  document.addEventListener('wheel', e => {
+  const handleWheel = (e) => {
     e.preventDefault();
     state.vel      = e.deltaY * SCROLL_SENS * 0.04;
     state.isThrown = true;
     state.isDragging = false;
-  }, { passive: false });
+  };
+  document.addEventListener('wheel', handleWheel, { passive: false });
 
   /* ── CLOSE FLOATING CARD ────────────────────────────────── */
-  floatingClose.addEventListener('click', dismissFloat);
+  const handleClose = () => dismissFloat();
+  if (floatingClose) floatingClose.addEventListener('click', handleClose);
 
   /* ── KEYBOARD ───────────────────────────────────────────── */
-  document.addEventListener('keydown', e => {
+  const handleKeydown = (e) => {
     if (e.key === 'ArrowRight') { state.vel =  2.5; state.isThrown = true; }
     if (e.key === 'ArrowLeft')  { state.vel = -2.5; state.isThrown = true; }
     if (e.key === 'Escape')     { dismissFloat(); }
-  });
+  };
+  document.addEventListener('keydown', handleKeydown);
 
   /* ── RESIZE ─────────────────────────────────────────────── */
-  window.addEventListener('resize', () => {
-    bgCanvas.width  = window.innerWidth;
-    bgCanvas.height = window.innerHeight;
-  });
+  const handleResize = () => {
+    if (bgCanvas) {
+      bgCanvas.width  = window.innerWidth;
+      bgCanvas.height = window.innerHeight;
+    }
+    cachedRadius = null; // Reset cache
+  };
+  window.addEventListener('resize', handleResize);
 
   /* ── HOVER: card tilt on mouse move within card ─────────── */
   cards.forEach(card => {
@@ -409,15 +468,113 @@
     });
   });
 
+  /* ── ANIMATE CARDS ENTRANCE ────────────────────────────── */
+  function animateCardsEntrance() {
+    const ENTRANCE_DELAY = 100; // ms between each card
+    const ENTRANCE_DURATION = 900; // animation duration in ms
+    const startTime = performance.now();
+    const cardStartTimes = {};
+
+    // Pause auto-rotation during entrance animation
+    let rotationPausedForEntrance = true;
+
+    // Record start times for each card
+    cards.forEach((card, index) => {
+      cardStartTimes[index] = ENTRANCE_DELAY * index;
+    });
+
+    // Store original opacity values
+    cards.forEach(card => {
+      card.dataset.originalOpacity = 1;
+      card.style.opacity = 0;
+      card.style.filter = 'blur(8px)';
+      card.classList.add('entering');
+    });
+
+    const animateFrame = (currentTime) => {
+      const elapsed = currentTime - startTime;
+
+      cards.forEach((card, index) => {
+        const cardStartTime = cardStartTimes[index];
+        const cardElapsed = elapsed - cardStartTime;
+
+        if (cardElapsed >= 0) {
+          const progress = Math.min(cardElapsed / ENTRANCE_DURATION, 1);
+          // Easing function: ease-out
+          const easeProgress = 1 - Math.pow(1 - progress, 3);
+          
+          card.style.opacity = easeProgress;
+          card.style.filter = `blur(${8 * (1 - easeProgress)}px)`;
+
+          // Remove animation class and style when complete
+          if (progress >= 1) {
+            card.classList.remove('entering');
+            card.style.opacity = '';
+            card.style.filter = '';
+          }
+        }
+      });
+
+      // Continue animation if any card is still animating
+      const totalAnimationTime = ENTRANCE_DELAY * (cards.length - 1) + ENTRANCE_DURATION;
+      if (elapsed < totalAnimationTime) {
+        requestAnimationFrame(animateFrame);
+      } else {
+        // Animation complete - resume normal rotation
+        rotationPausedForEntrance = false;
+      }
+    };
+
+    requestAnimationFrame(animateFrame);
+  }
+
   /* ── INIT ───────────────────────────────────────────────── */
   function init() {
-    bgCanvas.width  = window.innerWidth;
-    bgCanvas.height = window.innerHeight;
-    initParticles();
-    positionCards(state.angle);
-    loop();
+    try {
+      if (!bgCanvas) {
+        throw new Error('bg-canvas element not found');
+      }
+      bgCanvas.width  = window.innerWidth;
+      bgCanvas.height = window.innerHeight;
+      initParticles();
+      positionCards(state.angle);
+      
+      // Animate cards entrance
+      animateCardsEntrance();
+      
+      loop();
+    } catch (err) {
+      console.error('Gallery: Initialization failed', err);
+      return false;
+    }
+    return true;
+  }
+
+  /* ── CLEANUP (for potential hot reloads) ──────────────── */
+  function cleanup() {
+    if (raf) cancelAnimationFrame(raf);
+    document.removeEventListener('mousemove', handleMouseMove);
+    document.removeEventListener('wheel', handleWheel);
+    if (floatingClose) floatingClose.removeEventListener('click', handleClose);
+    document.removeEventListener('keydown', handleKeydown);
+    window.removeEventListener('resize', handleResize);
+    cards.forEach(card => {
+      card.removeEventListener('mouseenter', null);
+      card.removeEventListener('mouseleave', null);
+      card.removeEventListener('mousedown', null);
+      card.removeEventListener('mousemove', null);
+      card.removeEventListener('mouseleave', null);
+    });
+    document.removeEventListener('mousemove', null);
+    document.removeEventListener('mouseup', null);
+    document.removeEventListener('touchstart', null);
+    document.removeEventListener('touchmove', null);
+    document.removeEventListener('touchend', null);
   }
 
   init();
+
+  // Expose cleanup globally for dev/reloads if needed
+  if (window.__DEV__) window.__galleryCleanup = cleanup;
 
 })();
