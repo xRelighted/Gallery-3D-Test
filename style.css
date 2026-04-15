@@ -34,6 +34,7 @@ html, body {
   height: 100%;
   overflow: hidden;
   cursor: none;
+  touch-action: none;
 }
 
 body {
@@ -41,6 +42,8 @@ body {
   background: var(--bg);
   color: var(--white);
   overscroll-behavior: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* ==================== BACKGROUND CANVAS ==================== */
@@ -63,6 +66,8 @@ body {
   transform: translate(-50%, -50%);
   transition: width 0.2s, height 0.2s, opacity 0.2s;
   mix-blend-mode: difference;
+  will-change: transform;
+  backface-visibility: hidden;
 }
 
 .cursor-follower {
@@ -76,6 +81,8 @@ body {
   transform: translate(-50%, -50%);
   transition: transform 0.12s ease, width 0.25s ease, height 0.25s ease, border-color 0.25s ease;
   opacity: 0.6;
+  will-change: transform;
+  backface-visibility: hidden;
 }
 
 body.dragging .cursor {
@@ -202,6 +209,8 @@ body.dragging .cursor-follower {
   height: var(--card-h);
   transform-style: preserve-3d;
   cursor: none;
+  contain: layout style paint;
+  will-change: transform, opacity;
 }
 
 .card-inner {
@@ -216,6 +225,13 @@ body.dragging .cursor-follower {
     0 0 0 1px var(--border),
     0 20px 60px rgba(0,0,0,0.55),
     0 4px 12px rgba(0,0,0,0.4);
+  will-change: transform, box-shadow;
+  backface-visibility: hidden;
+}
+
+.card:focus-within .card-inner {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
 }
 
 .card.hovered .card-inner {
@@ -328,6 +344,8 @@ body.dragging .cursor-follower {
     0 30px 80px rgba(0,0,0,0.7),
     0 0 60px rgba(201,169,110,0.18);
   will-change: transform, left, top;
+  backface-visibility: hidden;
+  contain: layout style paint;
 }
 
 .floating-card.visible {
@@ -362,6 +380,7 @@ body.dragging .cursor-follower {
   height: 30px;
   background: rgba(0,0,0,0.6);
   backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   border: 1px solid var(--border);
   border-radius: 50%;
   display: flex;
@@ -372,6 +391,8 @@ body.dragging .cursor-follower {
   color: var(--white);
   opacity: 0;
   transition: opacity 0.2s ease, background 0.2s ease;
+  padding: 0;
+  font-size: inherit;
 }
 
 .floating-card.visible .floating-close {
@@ -381,6 +402,11 @@ body.dragging .cursor-follower {
 
 .floating-close:hover {
   background: rgba(201,169,110,0.2);
+}
+
+.floating-close:focus {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
 }
 
 .floating-index {
@@ -441,6 +467,18 @@ body.dragging .cursor-follower {
 }
 
 /* ==================== RESPONSIVE ==================== */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  @keyframes scrollPulse {
+    0%, 100% { opacity: 0.4; transform: scaleY(1); }
+    50% { opacity: 0.4; transform: scaleY(1); }
+  }
+}
+
 @media (max-width: 900px) {
   :root {
     --card-w: 145px;
@@ -449,6 +487,9 @@ body.dragging .cursor-follower {
   }
   .site-title { font-size: 1.8rem; }
   .logo-mark { display: none; }
+  body {
+    touch-action: pan-y;
+  }
 }
 
 @media (max-width: 600px) {
@@ -461,14 +502,29 @@ body.dragging .cursor-follower {
   .site-title { font-size: 1.4rem; }
   .header-meta { display: none; }
   .hint-text { font-size: 0.52rem; }
+
+  .github-link {
+    left: 50%;
+    transform: translateX(calc(-100% - 6px));
+    padding: 8px 12px;
+    font-size: 0.55rem;
+    gap: 6px;
+  }
+
+  .portfolio-link {
+    left: 50%;
+    transform: translateX(6px);
+    padding: 8px 12px;
+    font-size: 0.55rem;
+    gap: 6px;
+  }
 }
 
 /* ==================== GITHUB LINK ==================== */
-.github-link {
+.github-link,
+.portfolio-link {
   position: fixed;
   bottom: 28px;
-  left: 50%;
-  transform: translateX(-50%);
   z-index: 100;
   display: flex;
   align-items: center;
@@ -491,11 +547,39 @@ body.dragging .cursor-follower {
   cursor: none;
 }
 
-.github-link:hover {
+.github-link {
+  left: 50%;
+  transform: translateX(calc(-100% - 12px));
+}
+
+.portfolio-link {
+  left: 50%;
+  transform: translateX(12px);
+}
+
+.github-link:hover,
+.portfolio-link:hover {
   color: var(--gold);
   border-color: rgba(201,169,110,0.3);
   background: rgba(201,169,110,0.07);
   box-shadow: 0 0 24px rgba(201,169,110,0.1);
+}
+
+.github-link:focus,
+.portfolio-link:focus {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+.portfolio-icon {
+  width: 16px;
+  height: 16px;
+  filter: brightness(0.9);
+  transition: filter 0.25s ease;
+}
+
+.portfolio-link:hover .portfolio-icon {
+  filter: brightness(1.2);
 }
 
 .github-icon {
