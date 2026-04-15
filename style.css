@@ -6,7 +6,7 @@
 
 :root {
   --width: min(180px, 24vw);
-  --height: 260px;
+  --height: 200px;
   --quantity: 8;
 }
 
